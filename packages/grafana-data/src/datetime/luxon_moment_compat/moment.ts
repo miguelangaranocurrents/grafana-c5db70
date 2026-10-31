@@ -771,6 +771,13 @@ function normalizeZone(zone: string | Zone): Zone {
   return normalized;
 }
 
+// moment-timezone ignores zone names it has no data for (e.g. 'default') instead of
+// producing an invalid date: moment.tz() stays in UTC and m.tz(name) keeps the current zone.
+function normalizeZoneOrUtc(zone: string | Zone): Zone {
+  const normalized = normalizeZone(zone);
+  return normalized.isValid ? normalized : FixedOffsetZone.instance(0);
+}
+
 function createTimeZoneInfo(name: string): MomentTimeZoneInfo | null {
   if (timeZoneInfoCache.has(name)) {
     return timeZoneInfoCache.get(name) ?? null;
@@ -1032,7 +1039,12 @@ class MomentCompat implements MomentLike {
       return this._dt.zoneName ?? undefined;
     }
 
-    return this._setDt(this._dt.setZone(normalizeZone(zone), { keepLocalTime }));
+    const normalized = normalizeZone(zone);
+    if (!normalized.isValid) {
+      return this;
+    }
+
+    return this._setDt(this._dt.setZone(normalized, { keepLocalTime }));
   }
 
   clone(): MomentLike {
@@ -1257,7 +1269,7 @@ function makeMoment(input?: MomentInput, options?: MomentOptions, parseOptions?:
     const copy = input.clone();
     return options?.zone ? copy.tz(typeof options.zone === 'string' ? options.zone : options.zone.name) : copy;
   }
-  const normalizedOptions = options?.zone ? { ...options, zone: normalizeZone(options.zone) } : options;
+  const normalizedOptions = options?.zone ? { ...options, zone: normalizeZoneOrUtc(options.zone) } : options;
   const dt = normalizeInput(input, normalizedOptions, parseOptions);
   const locale = DateTime.isDateTime(input)
     ? (input.locale ?? DEFAULT_LOCALE)
